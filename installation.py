@@ -111,10 +111,9 @@ search_string = input("Enter part of the SSID you want to connect to: ").strip()
 # Step 2: Scan Wi-Fi networks and find matches
 available_ssids = scan_wifi()
 # Debugging: Print all scanned SSIDs
-print("Scanned SSIDs:", available_ssids)
+# print("Scanned SSIDs:", available_ssids)
 # Find SSIDs that match (case insensitive)
 matching_ssids = [ssid for ssid in available_ssids if search_string in ssid.lower()]
-
 
 if not matching_ssids:
     print(f"No SSIDs found containing '{search_string}'. Exiting.")
@@ -174,7 +173,7 @@ while True:
     break
 
 # Step 7: Prepare and send first payload
-payload_1 = {
+aws_setting_payload_template = {
     "EVENT": "SET_AWS_SETTING",
     "ENABLE": "1",
     "ROOT_CA": "rootCA.pem",
@@ -187,23 +186,39 @@ payload_1 = {
     "TOPIC_AWS_TO_GW": "intlife/9C65F9??????",
     "TOPIC_GW_TO_AWS": "9C65F9??????",
     "CLIENT_ID": "hub_9C65F9??????",
-    "MULTI_CMD": "1"
+    "MULTI_CMD": "0"
 }
 
 # Replace placeholders
-updated_payload_1 = replace_placeholders(payload_1, selected_ssid)
+aws_setting_payload = replace_placeholders(aws_setting_payload_template, selected_ssid)
 hub_mac_address = replace_string(selected_ssid)
 
 # Publish first payload
-result = client.publish(mqtt_topic, json.dumps(updated_payload_1))
+result = client.publish(mqtt_topic, json.dumps(aws_setting_payload))
+result.wait_for_publish()
+time.sleep(3)
+result = client.publish(mqtt_topic, json.dumps(aws_setting_payload))
 result.wait_for_publish()
 print("First payload (AWS cert setup) sent successfully.")
 
 # Step 8: Wait before sending next command
 time.sleep(3)
 
+# Step 9: Set Auto Reboot (Every Monday 3AM)
+auto_reboot_payload = {
+  "EVENT": "AUTO_REBOOT_SET",
+  "REBOOT_TYPE": 2,
+  "DAY_OF_WEEK": 1,
+  "HOUR":3,
+  "MINUTE":0
+}
+result = client.publish(mqtt_topic, json.dumps(auto_reboot_payload))
+result.wait_for_publish()
+print("Successfully configure auto reboot (Weekly, Monday 3AM).")
+time.sleep(3)
+
+
 all_available_ssids = scan_wifi()
-print("Scanned SSIDs:", all_available_ssids)
 
 print("Available networks matching your input:")
 for i, ssid in enumerate(all_available_ssids, 1):
@@ -217,8 +232,8 @@ if selected_index < 0 or selected_index >= len(all_available_ssids):
 selected_ssid_for_hub_to_connect = all_available_ssids[selected_index]
 wifi_password_for_selected_ssid = input(f"Enter the password for {selected_ssid_for_hub_to_connect}: ")
 
-# Step 9: Send Wi-Fi settings payload
-payload_2 = {
+# Step 10: Send Wi-Fi settings payload
+wifi_setting_payload = {
     "EVENT": "WIFI_SETTING",
     "MODE": "sta",
     "SSID": selected_ssid_for_hub_to_connect,
@@ -226,10 +241,9 @@ payload_2 = {
     "KEY": wifi_password_for_selected_ssid
 }
 
-result = client.publish(mqtt_topic, json.dumps(payload_2))
+result = client.publish(mqtt_topic, json.dumps(wifi_setting_payload))
 result.wait_for_publish()
     
-
 print("Second payload (Wi-Fi settings) sent successfully.")
 
 # Step 10: Cleanup and disconnect
@@ -238,3 +252,4 @@ client.disconnect()
 print("MQTT communication completed.")
 print("Done setup for Hub, you may now copy the hub mac address to test the AWS cert setup")
 print(hub_mac_address)
+print("If the testing to AWS cert is fail, you're required to reset the Intlife Hub's network then run the same script again.")
